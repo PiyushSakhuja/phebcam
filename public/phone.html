@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>Sender (Camera)</title>
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+
+<body>
+    <h2>Camera Broadcaster</h2>
+    <video id="localVideo" autoplay playsinline muted style="width: 300px; transform: scaleX(-1);"></video>
+
+    <script>
+        const socket = io();
+        let peerConnection;
+        const config = { iceServers: [] }; // Kept clean to avoid syntax errors
+
+        async function startStream() {
+            try {
+                // 1. Get the camera feed first
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                document.getElementById('localVideo').srcObject = stream;
+
+                // 2. Initialize connection
+                peerConnection = new RTCPeerConnection(config);
+
+                // 3. IMMEDIATELY attach the live camera tracks to our connection data
+                stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
+
+                // 4. Set up ICE optimization forwarding
+                peerConnection.onicecandidate = event => {
+                    if (event.candidate) socket.emit('ice-candidate', event.candidate);
+                };
+
+                // 5. NOW create the offer (It will correctly include the camera details!)
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                socket.emit('offer', offer);
+
+            } catch (err) {
+                console.error("Camera access failed:", err);
+            }
+        }
+
+        socket.on('answer', async (answer) => {
+            if (peerConnection) {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+            }
+        });
+
+        socket.on('ice-candidate', async (candidate) => {
+            if (peerConnection) {
+                await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+            }
+        });
+
+        // Run
+        startStream();
+
+    </script>
+</body>
+
+</html>

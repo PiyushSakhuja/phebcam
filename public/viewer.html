@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>Receiver (Viewer)</title>
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+
+<body>
+    <h2>Camera Feed Viewer</h2>
+    <video id="remoteVideo" autoplay playsinline style="width: 500px;"></video>
+
+    <script>
+        const socket = io();
+        let peerConnection;
+        const config = { iceServers: [] };
+
+        socket.on('offer', async (offer) => {
+            peerConnection = new RTCPeerConnection(config);
+
+            // FIX: Catch the tracks and assign the base stream layout array explicitly
+            peerConnection.ontrack = event => {
+                const remoteVideo = document.getElementById('remoteVideo');
+                if (event.streams && event.streams[0]) {
+                    remoteVideo.srcObject = event.streams[0];
+                }
+            };
+
+            peerConnection.onicecandidate = event => {
+                if (event.candidate) socket.emit('ice-candidate', event.candidate);
+            };
+
+            // Accept incoming setup parameters and write back our authorization answer
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            socket.emit('answer', answer);
+        });
+
+        socket.on('ice-candidate', async (candidate) => {
+            if (peerConnection) {
+                await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+            }
+        });
+
+    </script>
+</body>
+
+</html>

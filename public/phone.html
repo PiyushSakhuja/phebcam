@@ -2,62 +2,29 @@
 <html lang="en">
 
 <head>
-    <title>Sender (Camera)</title>
-    <script src="/socket.io/socket.io.js"></script>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Phone Camera</title>
+
 </head>
 
 <body>
-    <h2>Camera Broadcaster</h2>
-    <video id="localVideo" autoplay playsinline muted style="width: 300px; transform: scaleX(-1);"></video>
 
-    <script>
-        const socket = io();
-        let peerConnection;
-        const config = { iceServers: [] }; // Kept clean to avoid syntax errors
+    <h1>Phone Camera</h1>
 
-        async function startStream() {
-            try {
-                // 1. Get the camera feed first
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-                document.getElementById('localVideo').srcObject = stream;
+    <video id="camera" autoplay playsinline></video>
 
-                // 2. Initialize connection
-                peerConnection = new RTCPeerConnection(config);
+    <canvas id="canvas" width="640" height="480" hidden></canvas>
 
-                // 3. IMMEDIATELY attach the live camera tracks to our connection data
-                stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
+    <p id="status">
+        Starting...
+    </p>
 
-                // 4. Set up ICE optimization forwarding
-                peerConnection.onicecandidate = event => {
-                    if (event.candidate) socket.emit('ice-candidate', event.candidate);
-                };
+    <script src="phone.js"></script>
 
-                // 5. NOW create the offer (It will correctly include the camera details!)
-                const offer = await peerConnection.createOffer();
-                await peerConnection.setLocalDescription(offer);
-                socket.emit('offer', offer);
-
-            } catch (err) {
-                console.error("Camera access failed:", err);
-            }
-        }
-
-        socket.on('answer', async (answer) => {
-            if (peerConnection) {
-                await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-            }
-        });
-
-        socket.on('ice-candidate', async (candidate) => {
-            if (peerConnection) {
-                await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-            }
-        });
-
-        // Run
-        startStream();
-
-    </script>
 </body>
 
 </html>

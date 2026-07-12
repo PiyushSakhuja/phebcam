@@ -2,48 +2,42 @@
 <html lang="en">
 
 <head>
-    <title>Receiver (Viewer)</title>
-    <script src="/socket.io/socket.io.js"></script>
+
+    <meta charset="UTF-8">
+
+    <title>Laptop Viewer</title>
+
 </head>
 
 <body>
-    <h2>Camera Feed Viewer</h2>
-    <video id="remoteVideo" autoplay playsinline style="width: 500px;"></video>
 
-    <script>
-        const socket = io();
-        let peerConnection;
-        const config = { iceServers: [] };
+    <h1>Phone Webcam Viewer</h1>
 
-        socket.on('offer', async (offer) => {
-            peerConnection = new RTCPeerConnection(config);
+    <img id="stream">
 
-            // FIX: Catch the tracks and assign the base stream layout array explicitly
-            peerConnection.ontrack = event => {
-                const remoteVideo = document.getElementById('remoteVideo');
-                if (event.streams && event.streams[0]) {
-                    remoteVideo.srcObject = event.streams[0];
-                }
-            };
+    <hr>
 
-            peerConnection.onicecandidate = event => {
-                if (event.candidate) socket.emit('ice-candidate', event.candidate);
-            };
+    <p id="status">Connecting...</p>
 
-            // Accept incoming setup parameters and write back our authorization answer
-            await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-            const answer = await peerConnection.createAnswer();
-            await peerConnection.setLocalDescription(answer);
-            socket.emit('answer', answer);
-        });
+    <p>
+        FPS:
+        <span id="fps">0</span>
+    </p>
 
-        socket.on('ice-candidate', async (candidate) => {
-            if (peerConnection) {
-                await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-            }
-        });
+    <p>
+        Frame Size:
+        <span id="frameSize">0</span>
+        KB
+    </p>
 
-    </script>
+    <p>
+        Bandwidth:
+        <span id="bandwidth">0</span>
+        Mbps
+    </p>
+
+    <script src="viewer.js"></script>
+
 </body>
 
 </html>

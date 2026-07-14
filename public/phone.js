@@ -1,98 +1,46 @@
-const video = document.getElementById("camera");
-const canvas = document.getElementById("canvas");
-const statusText = document.getElementById("status");
+// 
 
-const ctx = canvas.getContext("2d");
+// const peer = new RTCPeerConnection();
+// //used to verify
+// console.log(peer.connectionState);  // overall connection
 
-let socket;
+// console.log(peer.signalingState);  // tracks the negotitation (offers)
 
-async function startCamera() {
+// console.log(peer.iceConnectionStalte); // ICE CANDIDATES
 
-    const stream = await navigator.mediaDevices.getUserMedia({
 
-        video: {
-            width: 640,
-            height: 480
-        },
+async function start() {
 
-        audio: false
+    console.log("1. Creating peer");
 
-    });
-
-    video.srcObject = stream;
-
-    await video.play();
-
-    statusText.innerText = "Camera started";
-
-    connectWebSocket();
-
-}
-
-function connectWebSocket() {
-
-    const protocol =
-        location.protocol === "https:"
-            ? "wss"
-            : "ws";
-
-    socket = new WebSocket(
-        `${protocol}://${location.host}`
-    );
-
-    socket.onopen = () => {
-
-        console.log("Connected to server");
-
-        socket.send("PHONE");
-
-        statusText.innerText =
-            "Connected. Streaming...";
-
-        startStreaming();
-
+    const peer = new RTCPeerConnection();
+    peer.createDataChannel("chat");
+    peer.onicecandidate = (event) => {
+        console.log("ICE Event Fired");
+        console.log(event.candidate);
     };
 
-}
+    console.log("2. Creating offer");
 
-function startStreaming() {
+    const offer = await peer.createOffer();
+    peer.onicegatheringstatechange = () => {
+        console.log("ICE Gathering State:", peer.iceGatheringState);
+    };
 
-    setInterval(() => {
+    peer.oniceconnectionstatechange = () => {
+        console.log("ICE Connection State:", peer.iceConnectionState);
+    };
 
-        if (
-            socket.readyState !== WebSocket.OPEN
-        ) {
-            return;
-        }
+    peer.onconnectionstatechange = () => {
+        console.log("Connection State:", peer.connectionState);
+    };
+    console.log("3. Offer created");
 
-        ctx.drawImage(
-            video,
-            0,
-            0,
-            canvas.width,
-            canvas.height
-        );
+    await peer.setLocalDescription(offer);
+    console.log("ICE Gathering:", peer.iceGatheringState);
 
-        canvas.toBlob(
-
-            (blob) => {
-
-                if (blob) {
-
-                    socket.send(blob);
-
-                }
-
-            },
-
-            "image/jpeg",
-
-            0.7
-
-        );
-
-    }, 33);
+    console.log("4. Local description set");
 
 }
 
-startCamera();
+start();

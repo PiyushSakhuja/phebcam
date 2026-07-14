@@ -43,4 +43,55 @@ async function start() {
 
 }
 
-start();
+
+
+const socket = new WebSocket("ws://localhost:3000");
+let peer;
+socket.onopen = () => {
+    socket.send(JSON.stringify({
+        type: "join",
+        room: "abc123",
+        payload: {
+            role: "phone",
+        }
+    }));
+}
+
+
+socket.onmessage = async (event) => {
+    const message = JSON.parse(event.data);
+    if (message.type == "peer-joined") {
+        peer = new RTCPeerConnection();
+        peer.createDataChannel("chat");
+        const offer = await peer.createOffer();
+        await peer.setLocalDescription(offer);
+        peer.onicecandidate = (event) => {
+
+            if (!event.candidate) return;
+
+            socket.send(JSON.stringify({
+
+                type: "ice-candidate",
+
+                room: "abc123",
+
+                payload: event.candidate
+
+            }));
+
+        };
+        socket.send(JSON.stringify({
+            type: "offer",
+            room: "abc123",
+            payload: offer
+
+        }));
+    }
+    if (message.type === "answer") {
+
+        await peer.setRemoteDescription(
+            message.payload
+        );
+
+    }
+}

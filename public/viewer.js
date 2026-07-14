@@ -1,136 +1,34 @@
-const image = document.getElementById("stream");
+const socket = new WebSocket("ws://localhost:3000");
+let peer = new RTCPeerConnection();
 
-const statusText =
-    document.getElementById("status");
+socket.onmessage = async (event) => {
 
-const fpsText =
-    document.getElementById("fps");
+    const message = JSON.parse(event.data);
 
-const frameSizeText =
-    document.getElementById("frameSize");
+    if (message.type === "offer") {
+        await peer.setRemoteDescription(message.payload);
+        const answer = await peer.createAnswer();
+        await peer.setLocalDescription(answer);
+        peer.onicecandidate = (event) => {
 
-const bandwidthText =
-    document.getElementById("bandwidth");
+            if (!event.candidate) return;
 
+            socket.send(JSON.stringify({
 
-const protocol =
-    location.protocol === "https:"
-        ? "wss"
-        : "ws";
+                type: "ice-candidate",
 
+                room: "abc123",
 
-const socket = new WebSocket(
-    `${protocol}://${location.host}`
-);
+                payload: event.candidate
 
+            }));
+        }
+        socket.send(JSON.stringify({
+            type: "answer",
+            room: "abc123",
+            payload: answer
 
-socket.binaryType = "blob";
-
-
-let previousURL = null;
-
-
-let frameCount = 0;
-
-let bytesReceived = 0;
-
-let lastMeasureTime = performance.now();
-
-
-socket.onopen = () => {
-
-    console.log("Connected");
-
-    socket.send("VIEWER");
-
-    statusText.innerText =
-        "Waiting for camera...";
-
-};
-
-
-socket.onmessage = (event) => {
-
-    frameCount++;
-
-    bytesReceived += event.data.size;
-
-
-    const frameSizeKB =
-        event.data.size / 1024;
-
-
-    frameSizeText.innerText =
-        frameSizeKB.toFixed(2);
-
-
-    const imageURL =
-        URL.createObjectURL(event.data);
-
-
-    image.src = imageURL;
-
-
-    if (previousURL) {
-
-        URL.revokeObjectURL(previousURL);
-
-    }
-
-
-    previousURL = imageURL;
-
-
-    statusText.innerText =
-        "Receiving video";
-
-
-    calculateStats();
-
-};
-
-
-function calculateStats() {
-
-    const now = performance.now();
-
-    const elapsed =
-        now - lastMeasureTime;
-
-
-    if (elapsed >= 1000) {
-
-        const seconds =
-            elapsed / 1000;
-
-
-        const fps =
-            frameCount / seconds;
-
-
-        const bitsReceived =
-            bytesReceived * 8;
-
-
-        const bandwidthMbps =
-            bitsReceived /
-            seconds /
-            1_000_000;
-
-
-        fpsText.innerText =
-            fps.toFixed(2);
-
-
-        bandwidthText.innerText =
-            bandwidthMbps.toFixed(2);
-
-
-        frameCount = 0;
-
-        bytesReceived = 0;
-
-        lastMeasureTime = now;
+        }));
 
     }
 

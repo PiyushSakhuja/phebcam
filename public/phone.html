@@ -2,28 +2,32 @@
 <html lang="en">
 
 <head>
-
     <meta charset="UTF-8">
 
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
 
     <title>Phone Camera</title>
-
 </head>
 
 <body>
 
     <h1>Phone Camera</h1>
 
-    <video id="camera" autoplay playsinline></video>
-
-    <canvas id="canvas" width="640" height="480" hidden></canvas>
+    <video
+        id="localVideo"
+        autoplay
+        playsinline
+        muted
+    ></video>
 
     <p id="status">
-        Starting...
+        Connecting...
     </p>
 
-    <script  type="module" src="phone.js"></script>
+    <script src="phone.js"></script>
 
 </body>
 

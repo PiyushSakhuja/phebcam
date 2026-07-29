@@ -2,13 +2,21 @@ const socket = new WebSocket(
     `ws://${location.host}`
 );
 
+const localVideo =
+    document.getElementById("localVideo");
+
+const statusText =
+    document.getElementById("status");
+
 let peer;
-let channel;
+let stream;
 
 
 socket.onopen = () => {
 
-    console.log("WebSocket connected");
+    console.log(
+        "WebSocket connected"
+    );
 
     socket.send(JSON.stringify({
 
@@ -31,30 +39,60 @@ socket.onmessage = async (event) => {
         JSON.parse(event.data);
 
 
-    // OTHER PEER IS READY
+    // LAPTOP IS READY
 
     if (message.type === "peer-joined") {
 
-        console.log("Peer joined");
+        console.log(
+            "Viewer joined"
+        );
+
+        statusText.innerText =
+            "Starting camera...";
+
+
+        // CREATE PEER
 
         createPeer();
 
-        channel =
-            peer.createDataChannel("chat");
+
+        // GET CAMERA
+
+        stream =
+            await navigator.mediaDevices
+                .getUserMedia({
+
+                    video: {
+                        width: 1280,
+                        height: 720
+                    },
+
+                    audio: false
+
+                });
 
 
-        channel.onopen = () => {
+        // SHOW LOCAL PREVIEW
 
-            console.log(
-                "DATA CHANNEL OPEN!"
-            );
+        localVideo.srcObject =
+            stream;
 
-            channel.send(
-                "Hello from phone!"
-            );
 
-        };
+        // ADD CAMERA TRACKS TO WEBRTC
 
+        stream
+            .getTracks()
+            .forEach(track => {
+
+                peer.addTrack(
+                    track,
+                    stream
+                );
+
+            });
+
+
+        // CREATE OFFER
 
         const offer =
             await peer.createOffer();
@@ -64,6 +102,8 @@ socket.onmessage = async (event) => {
             offer
         );
 
+
+        // SEND OFFER
 
         socket.send(JSON.stringify({
 
@@ -75,10 +115,14 @@ socket.onmessage = async (event) => {
 
         }));
 
+
+        statusText.innerText =
+            "Streaming";
+
     }
 
 
-    // ANSWER FROM LAPTOP
+    // ANSWER
 
     if (message.type === "answer") {
 
@@ -93,7 +137,7 @@ socket.onmessage = async (event) => {
     }
 
 
-    // ICE FROM LAPTOP
+    // REMOTE ICE CANDIDATE
 
     if (
         message.type ===
@@ -120,6 +164,7 @@ function createPeer() {
         if (!event.candidate) {
             return;
         }
+
 
         socket.send(JSON.stringify({
 

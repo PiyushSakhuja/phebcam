@@ -91,6 +91,32 @@ wss.on("connection", (socket) => {
         }
 
     });
+    socket.on("close", () => {
+
+        const room = socket.room;
+
+        if (!room || !rooms[room]) {
+            return;
+        }
+
+        rooms[room] = rooms[room].filter(
+            client => client !== socket
+        );
+
+        console.log(
+            `${socket.role} left ${room}`
+        );
+
+        console.log(
+            "Clients remaining:",
+            rooms[room].length
+        );
+
+        if (rooms[room].length === 0) {
+            delete rooms[room];
+        }
+
+    });
 
 });
 

@@ -5,38 +5,25 @@
 
     <meta charset="UTF-8">
 
-    <title>Laptop Viewer</title>
+    <title>
+        WebRTC Phone Camera
+    </title>
 
 </head>
 
 <body>
 
-    <h1>Phone Webcam Viewer</h1>
+    <h1>
+        Phone Webcam
+    </h1>
 
-    <img id="stream">
+    <video id="remoteVideo" autoplay playsinline muted  style="width: 80%; border: 2px solid black;"></video>
 
-    <hr>
-
-    <p id="status">Connecting...</p>
-
-    <p>
-        FPS:
-        <span id="fps">0</span>
+    <p id="status">
+        Waiting for phone...
     </p>
 
-    <p>
-        Frame Size:
-        <span id="frameSize">0</span>
-        KB
-    </p>
-
-    <p>
-        Bandwidth:
-        <span id="bandwidth">0</span>
-        Mbps
-    </p>
-
-    <script type="module" src="viewer.js"></script>
+    <script src="viewer.js"></script>
 
 </body>
 

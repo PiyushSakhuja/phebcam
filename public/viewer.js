@@ -2,15 +2,105 @@ const socket = new WebSocket(
     `ws://${location.host}`
 );
 
+const remoteVideo =
+    document.getElementById(
+        "remoteVideo"
+    );
+
+const statusText =
+    document.getElementById(
+        "status"
+    );
+
+
 let peer =
     new RTCPeerConnection();
 
+let previousBytes = 0;
+let previousTimestamp = 0;
 
+async function showStats() {
+
+    const stats = await peer.getStats();
+
+    stats.forEach(report => {
+
+        if (
+            report.type === "inbound-rtp" &&
+            report.kind === "video"
+        ) {
+
+            console.log(
+                "Resolution:",
+                report.frameWidth,
+                "x",
+                report.frameHeight
+            );
+
+            console.log(
+                "FPS:",
+                report.framesPerSecond
+            );
+
+            console.log(
+                "Packets Lost:",
+                report.packetsLost
+            );
+
+            console.log(
+                "Jitter:",
+                report.jitter
+            );
+
+
+            // Calculate bitrate
+
+            if (
+                previousTimestamp &&
+                previousBytes
+            ) {
+
+                const bytesDifference =
+                    report.bytesReceived -
+                    previousBytes;
+
+                const timeDifference =
+                    report.timestamp -
+                    previousTimestamp;
+
+                const bitrate =
+                    (
+                        bytesDifference *
+                        8 /
+                        timeDifference
+                    );
+
+                console.log(
+                    "Bitrate:",
+                    bitrate.toFixed(2),
+                    "kbps"
+                );
+
+            }
+
+
+            previousBytes =
+                report.bytesReceived;
+
+            previousTimestamp =
+                report.timestamp;
+
+        }
+
+    });
+
+}
 socket.onopen = () => {
 
     console.log(
         "WebSocket connected"
     );
+
 
     socket.send(JSON.stringify({
 
@@ -27,40 +117,25 @@ socket.onopen = () => {
 };
 
 
-// RECEIVE DATA CHANNEL
+// RECEIVE VIDEO TRACK
 
-peer.ondatachannel = (event) => {
+peer.ontrack = async (event) => {
+    console.log("Video track received");
+    console.log("Track:", event.track);
+    console.log("Streams:", event.streams);
 
-    const channel =
-        event.channel;
+    remoteVideo.srcObject = event.streams[0];
 
-
-    console.log(
-        "Data channel received:",
-        channel.label
-    );
-
-
-    channel.onopen = () => {
-
-        console.log(
-            "DATA CHANNEL OPEN!"
-        );
-
-    };
-
-
-    channel.onmessage = (event) => {
-
-        console.log(
-            "PHONE SAYS:",
-            event.data
-        );
-
-    };
-
+    try {
+        await remoteVideo.play();
+        console.log("Video playing");
+    } catch (error) {
+        console.error("Video play failed:", error);
+    }
 };
 
+
+// SEND ICE
 
 peer.onicecandidate = (event) => {
 
@@ -83,6 +158,8 @@ peer.onicecandidate = (event) => {
 };
 
 
+// CONNECTION STATE
+
 peer.onconnectionstatechange = () => {
 
     console.log(
@@ -92,6 +169,8 @@ peer.onconnectionstatechange = () => {
 
 };
 
+
+// RECEIVE SIGNALING
 
 socket.onmessage = async (event) => {
 
@@ -135,7 +214,7 @@ socket.onmessage = async (event) => {
     }
 
 
-    // ICE FROM PHONE
+    // PHONE ICE
 
     if (
         message.type ===
@@ -149,3 +228,8 @@ socket.onmessage = async (event) => {
     }
 
 };
+
+setInterval(
+    showStats,
+    1000
+);

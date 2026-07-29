@@ -1,47 +1,48 @@
+const image = document.querySelector("img");
 const socket = new WebSocket(
     `ws://${location.host}`
 );
 
 const remoteVideo =
-    document.getElementById(
-        "remoteVideo"
-    );
+document.getElementById(
+    "remoteVideo"
+);
 
 const statusText =
-    document.getElementById(
-        "status"
-    );
+document.getElementById(
+    "status"
+);
 
 
 let peer =
-    new RTCPeerConnection();
+new RTCPeerConnection();
 
 let previousBytes = 0;
 let previousTimestamp = 0;
 
 async function showStats() {
-
+    
     const stats = await peer.getStats();
-
+    
     stats.forEach(report => {
 
         if (
             report.type === "inbound-rtp" &&
             report.kind === "video"
         ) {
-
+            
             console.log(
                 "Resolution:",
                 report.frameWidth,
                 "x",
                 report.frameHeight
             );
-
+            
             console.log(
                 "FPS:",
                 report.framesPerSecond
             );
-
+            
             console.log(
                 "Packets Lost:",
                 report.packetsLost
@@ -51,30 +52,30 @@ async function showStats() {
                 "Jitter:",
                 report.jitter
             );
-
-
+            
+            
             // Calculate bitrate
-
+            
             if (
                 previousTimestamp &&
                 previousBytes
             ) {
-
+                
                 const bytesDifference =
-                    report.bytesReceived -
-                    previousBytes;
-
+                report.bytesReceived -
+                previousBytes;
+                
                 const timeDifference =
-                    report.timestamp -
-                    previousTimestamp;
-
+                report.timestamp -
+                previousTimestamp;
+                
                 const bitrate =
-                    (
-                        bytesDifference *
-                        8 /
-                        timeDifference
-                    );
-
+                (
+                    bytesDifference *
+                    8 /
+                    timeDifference
+                );
+                
                 console.log(
                     "Bitrate:",
                     bitrate.toFixed(2),
@@ -82,42 +83,43 @@ async function showStats() {
                 );
 
             }
-
-
+            
+            
             previousBytes =
-                report.bytesReceived;
-
+            report.bytesReceived;
+            
             previousTimestamp =
-                report.timestamp;
-
+            report.timestamp;
+            
         }
-
+        
     });
-
+    
 }
 socket.onopen = () => {
 
     console.log(
         "WebSocket connected"
     );
-
-
+    
+    
     socket.send(JSON.stringify({
-
+        
         type: "join",
-
+        
         room: "abc123",
-
+        
         payload: {
             role: "viewer"
         }
-
+        
     }));
-
+    
 };
 
 
 // RECEIVE VIDEO TRACK
+
 
 peer.ontrack = async (event) => {
     console.log("Video track received");
@@ -233,3 +235,41 @@ setInterval(
     showStats,
     1000
 );
+
+
+async function getip() {
+    const res = await fetch('/api/get-ip');
+    const data = await res.json();
+    return data.ip;
+}
+
+async function generateQr(URL) {
+    console.log("starting", URL);
+
+    const response = await fetch('/qrcode', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            url: URL
+        })
+    });
+
+    const result = await response.json(); // Parse the JSON response from the server
+    console.log('Success:', result);
+    return result.qrurl;
+    
+}
+
+async function test() {
+    const ip = await getip();
+    console.log(ip);
+
+    const qr = await generateQr(`http://${ip}:3000/phone.html`);
+    image.setAttribute("src", qr);
+}
+
+test();
+
+

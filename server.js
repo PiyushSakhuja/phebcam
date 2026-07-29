@@ -1,17 +1,33 @@
 const express = require("express");
 const http = require("http");
 const WebSocket = require("ws");
-
+const os = require('node:os');
+const qr = require("qrcode");
 const app = express();
 const server = http.createServer(app);
 
 app.use(express.static("public"));
+app.use(express.json());
+app.use(express.urlencoded({extended:true}));
+
+app.post('/qrcode',(req,res)=>{
+    const url = req.body.url;
+    console.log("server",url);
+    
+    qr.toDataURL(url,(err,qrurl)=>{
+        if(err) res.send("something went wrong");
+        console.log("server :",qrurl);
+        
+        res.json({"qrurl":qrurl});
+    })
+})
 
 const wss = new WebSocket.Server({
     server
 });
 
 const rooms = {};
+
 
 wss.on("connection", (socket) => {
 
@@ -118,6 +134,16 @@ wss.on("connection", (socket) => {
 
     });
 
+});
+
+
+app.get('/api/get-ip', (req, res) => {
+    const data = os.networkInterfaces();
+    const wifiData = data["Wi-Fi"];
+    const ipv4Details = wifiData.find(item => item.family === 'IPv4');
+    res.json({
+        "ip" : ipv4Details.address
+    });
 });
 
 server.listen(3000, "0.0.0.0", () => {

@@ -1,63 +1,434 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-    <title>Sender (Camera)</title>
-    <script src="/socket.io/socket.io.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Phebcam — Your phone camera</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="/socket.io/socket.io.js"></script>
 </head>
+<body class="phone-view">
+  <div class="phone-page">
+    <div class="phone-header">
+      <h1>Phebcam</h1>
+      <p class="sub">Your phone camera</p>
+    </div>
 
-<body>
-    <h2>Camera Broadcaster</h2>
-    <video id="localVideo" autoplay playsinline muted style="width: 300px; transform: scaleX(-1);"></video>
+    <div id="liveBadge" class="live-badge" style="display:none;">
+      <span class="dot"></span> LIVE
+    </div>
 
-    <script>
-        const socket = io();
-        let peerConnection;
-        const config = { iceServers: [] }; // Kept clean to avoid syntax errors
+    <div class="status-row" id="statusRow">
+      <span class="status-dot waiting" id="statusDot"></span>
+      <span id="statusText">Not started</span>
+    </div>
 
-        async function startStream() {
-            try {
-                // 1. Get the camera feed first
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-                document.getElementById('localVideo').srcObject = stream;
+    <div class="error-box" id="errorBox"></div>
 
-                // 2. Initialize connection
-                peerConnection = new RTCPeerConnection(config);
+    <div class="room-box" id="roomBox" style="display:none;">
+      <span>Room: <code id="roomCode">—</code></span>
+      <button class="copy-btn" id="copyLinkBtn">Copy Room Code</button>
+    </div>
 
-                // 3. IMMEDIATELY attach the live camera tracks to our connection data
-                stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
+    <div class="phone-video-wrap" id="videoWrap">
+      <video id="localVideo" autoplay playsinline muted></video>
+      <div class="video-placeholder" id="videoPlaceholder">
+        Tap "Start Camera" to begin. Your camera will not turn on until
+        you do.
+      </div>
+    </div>
 
-                // 4. Set up ICE optimization forwarding
-                peerConnection.onicecandidate = event => {
-                    if (event.candidate) socket.emit('ice-candidate', event.candidate);
-                };
+    <div class="phone-controls">
+      <div class="select-row" id="cameraSelectRow" style="display:none;">
+        <select id="cameraSelect"></select>
+      </div>
 
-                // 5. NOW create the offer (It will correctly include the camera details!)
-                const offer = await peerConnection.createOffer();
-                await peerConnection.setLocalDescription(offer);
-                socket.emit('offer', offer);
+      <div class="control-row" id="preStartRow">
+        <button class="btn primary" id="startBtn">Start Camera</button>
+      </div>
 
-            } catch (err) {
-                console.error("Camera access failed:", err);
-            }
+      <div class="control-row" id="liveRow" style="display:none;">
+        <button class="btn small" id="switchCameraBtn">Switch Camera</button>
+        <button class="btn small" id="mirrorBtn">Mirror</button>
+      </div>
+
+      <div class="control-row" id="stopRow" style="display:none;">
+        <button class="btn danger" id="stopBtn">Stop Camera</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const room = (params.get('room') || '').toUpperCase();
+    document.getElementById('roomCode').textContent = room || '(missing)';
+
+    const statusDot = document.getElementById('statusDot');
+    const statusText = document.getElementById('statusText');
+    const errorBox = document.getElementById('errorBox');
+    const localVideo = document.getElementById('localVideo');
+    const videoWrap = document.getElementById('videoWrap');
+    const videoPlaceholder = document.getElementById('videoPlaceholder');
+    const liveBadge = document.getElementById('liveBadge');
+    const roomBox = document.getElementById('roomBox');
+    const copyLinkBtn = document.getElementById('copyLinkBtn');
+
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const switchCameraBtn = document.getElementById('switchCameraBtn');
+    const mirrorBtn = document.getElementById('mirrorBtn');
+    const cameraSelectRow = document.getElementById('cameraSelectRow');
+    const cameraSelect = document.getElementById('cameraSelect');
+    const preStartRow = document.getElementById('preStartRow');
+    const liveRow = document.getElementById('liveRow');
+    const stopRow = document.getElementById('stopRow');
+
+    let socket = null;
+    let peerConnection = null;
+    let localStream = null;
+    let videoSender = null;
+    let currentDeviceId = null;
+    let mirrored = true;
+    let reconnectTimer = null;
+    let manuallyStopped = false;
+
+    function setStatus(state, text) {
+      statusDot.className = `status-dot ${state}`;
+      statusText.textContent = text;
+      liveBadge.style.display = state === 'connected' ? 'inline-flex' : 'none';
+    }
+
+    function showError(message) {
+      errorBox.textContent = message;
+      errorBox.classList.add('show');
+    }
+
+    function clearError() {
+      errorBox.textContent = '';
+      errorBox.classList.remove('show');
+    }
+
+    copyLinkBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(room);
+        copyLinkBtn.textContent = 'Copied!';
+        setTimeout(() => (copyLinkBtn.textContent = 'Copy Room Code'), 1500);
+      } catch {
+        window.prompt('Copy this room code:', room);
+      }
+    });
+
+    if (!room) {
+      showError('No room code found in the URL. Go back and start a new session from the home page.');
+      startBtn.disabled = true;
+    }
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      showError('This browser does not support camera access (getUserMedia). Try an up-to-date Chrome, Firefox, or Safari.');
+      startBtn.disabled = true;
+    }
+
+    if (!window.RTCPeerConnection) {
+      showError('This browser does not support WebRTC.');
+      startBtn.disabled = true;
+    }
+
+    async function populateCameraList() {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const cams = devices.filter((d) => d.kind === 'videoinput');
+        if (cams.length > 1) {
+          cameraSelect.innerHTML = '';
+          cams.forEach((cam, i) => {
+            const opt = document.createElement('option');
+            opt.value = cam.deviceId;
+            opt.textContent = cam.label || `Camera ${i + 1}`;
+            cameraSelect.appendChild(opt);
+          });
+          cameraSelectRow.style.display = 'flex';
+        } else {
+          cameraSelectRow.style.display = 'none';
+        }
+      } catch (err) {
+        console.warn('[camera] enumerateDevices failed:', err);
+      }
+    }
+
+    function createPeerConnection() {
+      const pc = new RTCPeerConnection({ iceServers: [] });
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate && socket) {
+          socket.emit('ice-candidate', event.candidate);
+        }
+      };
+
+      pc.onconnectionstatechange = () => {
+        console.log('[camera] connectionState:', pc.connectionState);
+        switch (pc.connectionState) {
+          case 'connecting':
+            setStatus('connecting', 'Connecting to PC...');
+            break;
+          case 'connected':
+            setStatus('connected', 'Connected to PC');
+            clearError();
+            break;
+          case 'disconnected':
+            setStatus('disconnected', 'PC disconnected');
+            break;
+          case 'failed':
+            setStatus('error', 'Connection failed');
+            showError('The peer connection failed. This can happen when the phone and PC are on different networks. See README for details.');
+            break;
+          case 'closed':
+            break;
+        }
+      };
+
+      return pc;
+    }
+
+    async function sendOffer() {
+      if (!peerConnection || !socket) return;
+      try {
+        const offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
+        socket.emit('offer', offer);
+      } catch (err) {
+        console.error('[camera] Failed to create/send offer:', err);
+        showError('Could not start the connection to the PC. Please try again.');
+      }
+    }
+
+    function attachTracksToPeerConnection() {
+      videoSender = null;
+      localStream.getTracks().forEach((track) => {
+        const sender = peerConnection.addTrack(track, localStream);
+        if (track.kind === 'video') videoSender = sender;
+      });
+    }
+
+    function connectSocket() {
+      socket = io({ reconnection: true, reconnectionAttempts: Infinity, reconnectionDelay: 1000 });
+
+      socket.on('connect', () => {
+        clearTimeout(reconnectTimer);
+        socket.emit('join', { room, role: 'camera' });
+        if (manuallyStopped) return;
+        setStatus('waiting', 'Waiting for PC...');
+      });
+
+      socket.on('connect_error', () => {
+        setStatus('error', 'Could not reach the signaling server');
+        showError('Unable to connect to the server. Check your connection.');
+      });
+
+      socket.on('join-error', ({ message }) => {
+        setStatus('error', 'Session error');
+        showError(message);
+      });
+
+      socket.on('viewer-status', ({ present }) => {
+        if (present) sendOffer();
+      });
+
+      socket.on('viewer-joined', () => {
+        if (peerConnection) {
+          peerConnection.close();
+        }
+        peerConnection = createPeerConnection();
+        attachTracksToPeerConnection();
+        sendOffer();
+      });
+
+      socket.on('answer', async (answer) => {
+        if (peerConnection) {
+          try {
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+          } catch (err) {
+            console.error('[camera] Failed to set remote description:', err);
+          }
+        }
+      });
+
+      socket.on('ice-candidate', async (candidate) => {
+        if (peerConnection) {
+          try {
+            await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+          } catch (err) {
+            console.error('[camera] Failed to add ICE candidate:', err);
+          }
+        }
+      });
+
+      socket.on('viewer-left', () => {
+        setStatus('waiting', 'Waiting for PC...');
+        if (peerConnection) {
+          peerConnection.close();
+          peerConnection = null;
+        }
+      });
+
+      socket.on('disconnect', () => {
+        if (manuallyStopped) return;
+        setStatus('reconnecting', 'Connection lost — reconnecting...');
+      });
+
+      socket.io.on('reconnect', () => {
+        if (manuallyStopped) return;
+        setStatus('waiting', 'Reconnected — waiting for PC...');
+      });
+    }
+
+    async function getStream(deviceId) {
+      const constraints = {
+        video: deviceId ? { deviceId: { exact: deviceId } } : { facingMode: 'environment' },
+        audio: false,
+      };
+      return navigator.mediaDevices.getUserMedia(constraints);
+    }
+
+    async function startCamera() {
+      clearError();
+      manuallyStopped = false;
+      startBtn.disabled = true;
+
+      try {
+        localStream = await getStream(currentDeviceId);
+      } catch (err) {
+        startBtn.disabled = false;
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          showError('Camera permission was denied. Allow camera access in your browser settings and try again.');
+        } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+          showError('No camera was found on this device.');
+        } else if (err.name === 'NotReadableError') {
+          showError('The camera could not be accessed. It may be in use by another app.');
+        } else {
+          showError('Could not access the camera: ' + err.message);
+        }
+        console.error('[camera] getUserMedia failed:', err);
+        return;
+      }
+
+      const track = localStream.getVideoTracks()[0];
+      currentDeviceId = track.getSettings().deviceId || null;
+
+      localVideo.srcObject = localStream;
+      videoPlaceholder.style.display = 'none';
+      videoWrap.classList.toggle('mirrored', mirrored);
+      roomBox.style.display = 'flex';
+      preStartRow.style.display = 'none';
+      liveRow.style.display = 'flex';
+      stopRow.style.display = 'flex';
+      setStatus('waiting', 'Camera ready — waiting for PC...');
+
+      populateCameraList();
+
+      peerConnection = createPeerConnection();
+      attachTracksToPeerConnection();
+
+      connectSocket();
+    }
+
+    async function switchCamera() {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const cams = devices.filter((d) => d.kind === 'videoinput');
+        if (cams.length < 2) return;
+
+        let nextIndex = 0;
+        if (currentDeviceId) {
+          const idx = cams.findIndex((c) => c.deviceId === currentDeviceId);
+          nextIndex = (idx + 1) % cams.length;
+        }
+        const nextDeviceId = cams[nextIndex].deviceId;
+
+        const newStream = await getStream(nextDeviceId);
+        const newTrack = newStream.getVideoTracks()[0];
+
+        // Stop the old video track only, keep the connection alive.
+        const oldTrack = localStream.getVideoTracks()[0];
+        oldTrack.stop();
+        localStream.removeTrack(oldTrack);
+        localStream.addTrack(newTrack);
+        localVideo.srcObject = localStream;
+
+        if (videoSender) {
+          await videoSender.replaceTrack(newTrack);
         }
 
-        socket.on('answer', async (answer) => {
-            if (peerConnection) {
-                await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-            }
-        });
+        currentDeviceId = newTrack.getSettings().deviceId || nextDeviceId;
+        if (cameraSelect.value !== undefined) cameraSelect.value = currentDeviceId;
+      } catch (err) {
+        console.error('[camera] switchCamera failed:', err);
+        showError('Could not switch cameras: ' + err.message);
+      }
+    }
 
-        socket.on('ice-candidate', async (candidate) => {
-            if (peerConnection) {
-                await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-            }
-        });
+    function toggleMirror() {
+      mirrored = !mirrored;
+      videoWrap.classList.toggle('mirrored', mirrored);
+    }
 
-        // Run
-        startStream();
+    function stopCamera() {
+      manuallyStopped = true;
 
-    </script>
+      if (localStream) {
+        localStream.getTracks().forEach((track) => track.stop());
+        localStream = null;
+      }
+      if (peerConnection) {
+        peerConnection.close();
+        peerConnection = null;
+      }
+      if (socket) {
+        socket.emit('camera-stopped');
+        socket.io.opts.reconnection = false;
+        socket.disconnect();
+        socket = null;
+      }
+
+      localVideo.srcObject = null;
+      videoPlaceholder.textContent = 'Tap "Start Camera" to begin. Your camera will not turn on until you do.';
+      videoPlaceholder.style.display = 'flex';
+      roomBox.style.display = 'none';
+      preStartRow.style.display = 'flex';
+      liveRow.style.display = 'none';
+      stopRow.style.display = 'none';
+      cameraSelectRow.style.display = 'none';
+      startBtn.disabled = false;
+      setStatus('waiting', 'Not started');
+    }
+
+    startBtn.addEventListener('click', startCamera);
+    stopBtn.addEventListener('click', stopCamera);
+    switchCameraBtn.addEventListener('click', switchCamera);
+    mirrorBtn.addEventListener('click', toggleMirror);
+
+    cameraSelect.addEventListener('change', async () => {
+      const deviceId = cameraSelect.value;
+      if (!deviceId || deviceId === currentDeviceId) return;
+      try {
+        const newStream = await getStream(deviceId);
+        const newTrack = newStream.getVideoTracks()[0];
+        const oldTrack = localStream.getVideoTracks()[0];
+        oldTrack.stop();
+        localStream.removeTrack(oldTrack);
+        localStream.addTrack(newTrack);
+        localVideo.srcObject = localStream;
+        if (videoSender) await videoSender.replaceTrack(newTrack);
+        currentDeviceId = deviceId;
+      } catch (err) {
+        console.error('[camera] camera select change failed:', err);
+        showError('Could not switch to that camera: ' + err.message);
+      }
+    });
+
+    window.addEventListener('beforeunload', () => {
+      if (localStream) {
+        localStream.getTracks().forEach((track) => track.stop());
+      }
+    });
+  </script>
 </body>
-
 </html>

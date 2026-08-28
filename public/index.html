@@ -1,11 +1,77 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>phebcam</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Phebcam — Turn your phone into a wireless webcam</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <a href="viewer.html"></a>
+  <div class="page">
+    <header class="top">
+      <h1>Phebcam</h1>
+      <p class="tagline">Turn your phone into a wireless webcam.</p>
+      <p class="subtext">Use your phone camera on your PC or laptop without a cable.</p>
+    </header>
+
+    <div class="actions">
+      <a class="btn primary" href="#" id="usePhoneBtn">Use Phone as Webcam</a>
+      <a class="btn" href="#" id="imOnPcBtn">I'm on the PC</a>
+    </div>
+
+    <div class="panel">
+      <p class="note">
+        Stream your phone camera to your PC over WebRTC, then use
+        <strong>OBS Virtual Camera</strong> to make it available to Zoom,
+        Discord, Google Meet, Teams, and other apps.
+      </p>
+    </div>
+
+    <div class="panel">
+      <p class="note" style="margin-bottom: 12px;"><strong>How it works</strong></p>
+      <ol class="steps-list">
+        <li>Open Phebcam on your phone and start the camera</li>
+        <li>Open the viewer on your PC and enter the session code</li>
+        <li>Add the viewer to OBS and enable Virtual Camera</li>
+      </ol>
+    </div>
+
+    <div class="flow-diagram">
+      <div class="flow-step">PHONE</div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-step">PHEBCAM</div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-step">OBS</div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-step">YOUR APPS</div>
+    </div>
+
+    <div class="panel">
+      <p class="note">
+        Camera access requires browser permission. Video is sent through a
+        WebRTC peer connection directly between your phone and PC.
+        Phebcam doesn't guarantee zero latency, connectivity across every
+        network, or production-grade reliability — see the project README
+        for current limitations.
+      </p>
+    </div>
+  </div>
+
+  <script>
+    function randomRoomId() {
+      return Math.random().toString(36).slice(2, 8).toUpperCase();
+    }
+
+    document.getElementById('usePhoneBtn').addEventListener('click', (e) => {
+      e.preventDefault();
+      const room = randomRoomId();
+      window.location.href = `phone.html?room=${room}`;
+    });
+
+    document.getElementById('imOnPcBtn').addEventListener('click', (e) => {
+      e.preventDefault();
+      window.location.href = 'viewer.html';
+    });
+  </script>
 </body>
 </html>

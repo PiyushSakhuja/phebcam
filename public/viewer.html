@@ -1,49 +1,440 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-    <title>Receiver (Viewer)</title>
-    <script src="/socket.io/socket.io.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Phebcam — Viewer</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="/socket.io/socket.io.js"></script>
 </head>
+<body class="viewer-view">
 
-<body>
-    <h2>Camera Feed Viewer</h2>
-    <video id="remoteVideo" autoplay playsinline style="width: 500px;"></video>
+  <!-- ============ Room entry (shown when no ?room= is present) ============ -->
+  <div class="page" id="entryScreen">
+    <header class="top">
+      <h1>Phebcam</h1>
+      <p class="tagline">I'm on the PC</p>
+      <p class="subtext">Enter the room code shown on your phone to connect.</p>
+    </header>
 
-    <script>
-        const socket = io();
-        let peerConnection;
-        const config = { iceServers: [] };
+    <div class="panel">
+      <div class="select-row" style="margin-bottom: 12px;">
+        <input
+          id="roomInput"
+          type="text"
+          placeholder="ABC123"
+          maxlength="64"
+          autocapitalize="characters"
+          style="flex:1; background: var(--panel-2); border: 1px solid var(--border); color: var(--text); border-radius: 10px; padding: 12px 14px; font-size: 18px; letter-spacing: 0.05em; text-transform: uppercase; min-height: 48px;"
+        >
+      </div>
+      <button class="btn primary" id="connectBtn" style="width:100%;">Connect</button>
+    </div>
 
-        socket.on('offer', async (offer) => {
-            peerConnection = new RTCPeerConnection(config);
+    <div class="panel">
+      <p class="note">
+        Don't have a room code yet? Open Phebcam on your phone first, tap
+        "Start Camera", and use the code shown there.
+      </p>
+    </div>
 
-            // FIX: Catch the tracks and assign the base stream layout array explicitly
-            peerConnection.ontrack = event => {
-                const remoteVideo = document.getElementById('remoteVideo');
-                if (event.streams && event.streams[0]) {
-                    remoteVideo.srcObject = event.streams[0];
-                }
-            };
+    <footer class="back"><a href="index.html">&larr; Back to home</a></footer>
+  </div>
 
-            peerConnection.onicecandidate = event => {
-                if (event.candidate) socket.emit('ice-candidate', event.candidate);
-            };
+  <!-- ============ Viewer (shown once a room is set) ============ -->
+  <div class="viewer-page" id="viewerScreen" style="display:none;">
+    <div class="viewer-topbar" id="viewerTopbar">
+      <div class="brand">
+        Phebcam
+        <span class="status-row">
+          <span class="status-dot waiting" id="statusDot"></span>
+          <span id="statusText">Waiting for phone</span>
+        </span>
+      </div>
+      <div class="top-actions">
+        <button class="btn small" id="fullscreenBtn">Fullscreen</button>
+        <button class="btn small" id="copyUrlBtn">Copy Viewer URL</button>
+        <button class="btn small" id="obsModeBtn">OBS Mode</button>
+      </div>
+    </div>
 
-            // Accept incoming setup parameters and write back our authorization answer
-            await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-            const answer = await peerConnection.createAnswer();
-            await peerConnection.setLocalDescription(answer);
-            socket.emit('answer', answer);
-        });
+    <div class="error-box" id="errorBox" style="margin: 0 20px;"></div>
 
-        socket.on('ice-candidate', async (candidate) => {
-            if (peerConnection) {
-                await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    <div class="viewer-stage" id="viewerStage">
+      <video id="remoteVideo" autoplay playsinline></video>
+      <div class="video-placeholder" id="videoPlaceholder">
+        Waiting for a phone camera to join room <strong id="roomLabel">—</strong>.
+      </div>
+    </div>
+
+    <div class="viewer-meta-bar" id="viewerMetaBar">
+      <div class="meta-item">Room <strong id="metaRoom">—</strong></div>
+      <div class="meta-item">Resolution <strong id="metaResolution">—</strong></div>
+      <div class="meta-item">Frame rate <strong id="metaFps">—</strong></div>
+      <div class="meta-item">Connection <strong id="metaConnection">—</strong></div>
+      <div class="meta-item">ICE <strong id="metaIce">—</strong></div>
+    </div>
+
+    <div class="viewer-lower" id="viewerLower">
+      <div class="panel">
+        <p class="note" style="margin-bottom: 10px;"><strong>Use Phebcam in OBS</strong></p>
+        <ol class="steps-list">
+          <li>Open OBS</li>
+          <li>Add a Browser Source to your scene</li>
+          <li>Enter this Phebcam viewer URL (OBS-optimized) in the source</li>
+          <li>Set the Browser Source width/height to match your phone's video</li>
+          <li>Select the Phebcam source in your scene</li>
+          <li>Click "Start Virtual Camera" in OBS</li>
+        </ol>
+
+        <div class="url-box" id="obsUrlBox">—</div>
+        <div style="margin-top:10px;">
+          <button class="btn small" id="copyObsUrlBtn">Copy OBS URL</button>
+        </div>
+
+        <p class="note" style="margin-top: 16px;">
+          Once "Start Virtual Camera" is running, apps like Zoom, Discord,
+          Google Meet, and Teams can select <strong>OBS Virtual Camera</strong>
+          as their camera source. Phebcam does not create a system camera
+          device itself — OBS handles that step.
+        </p>
+
+        <div class="obs-flow">
+          <span class="obs-step">Phebcam Viewer</span>
+          <span class="obs-arrow">→</span>
+          <span class="obs-step">OBS Browser Source</span>
+          <span class="obs-arrow">→</span>
+          <span class="obs-step">OBS Scene</span>
+          <span class="obs-arrow">→</span>
+          <span class="obs-step">Virtual Camera</span>
+          <span class="obs-arrow">→</span>
+          <span class="obs-step">Zoom / Discord / Meet</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <p class="note">
+          <strong>Networking:</strong> Same network / local testing is
+          supported where your browser's security requirements are met.
+          Connecting across different networks may fail — Phebcam does not
+          currently use a TURN relay server, only direct peer-to-peer
+          connectivity.
+        </p>
+      </div>
+
+      <div class="panel">
+        <p class="note">
+          <strong>Privacy:</strong> Camera access on the phone requires
+          browser permission. Video is transmitted using WebRTC directly
+          between the phone and this browser. The signaling server only
+          relays connection setup messages and does not store camera
+          recordings. No recording happens unless you explicitly record
+          through another application such as OBS.
+        </p>
+      </div>
+
+      <footer class="back"><a href="index.html">&larr; Back to home</a></footer>
+    </div>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    let room = (params.get('room') || '').toUpperCase();
+    const obsMode = params.get('obs') === 'true';
+
+    const entryScreen = document.getElementById('entryScreen');
+    const viewerScreen = document.getElementById('viewerScreen');
+    const roomInput = document.getElementById('roomInput');
+    const connectBtn = document.getElementById('connectBtn');
+
+    const statusDot = document.getElementById('statusDot');
+    const statusText = document.getElementById('statusText');
+    const errorBox = document.getElementById('errorBox');
+    const remoteVideo = document.getElementById('remoteVideo');
+    const videoPlaceholder = document.getElementById('videoPlaceholder');
+    const roomLabel = document.getElementById('roomLabel');
+    const viewerStage = document.getElementById('viewerStage');
+
+    const metaRoom = document.getElementById('metaRoom');
+    const metaResolution = document.getElementById('metaResolution');
+    const metaFps = document.getElementById('metaFps');
+    const metaConnection = document.getElementById('metaConnection');
+    const metaIce = document.getElementById('metaIce');
+
+    const fullscreenBtn = document.getElementById('fullscreenBtn');
+    const copyUrlBtn = document.getElementById('copyUrlBtn');
+    const obsModeBtn = document.getElementById('obsModeBtn');
+    const obsUrlBox = document.getElementById('obsUrlBox');
+    const copyObsUrlBtn = document.getElementById('copyObsUrlBtn');
+
+    let peerConnection = null;
+    let socket = null;
+    let statsTimer = null;
+
+    function setStatus(state, text) {
+      statusDot.className = `status-dot ${state}`;
+      statusText.textContent = text;
+      metaConnection.textContent = text;
+    }
+
+    function showError(message) {
+      errorBox.textContent = message;
+      errorBox.classList.add('show');
+    }
+
+    function clearError() {
+      errorBox.textContent = '';
+      errorBox.classList.remove('show');
+    }
+
+    function showVideo() {
+      videoPlaceholder.style.display = 'none';
+    }
+
+    function hideVideo(message) {
+      remoteVideo.srcObject = null;
+      videoPlaceholder.innerHTML = message;
+      videoPlaceholder.style.display = 'flex';
+      metaResolution.textContent = '—';
+      metaFps.textContent = '—';
+    }
+
+    function applyObsMode() {
+      if (obsMode) {
+        document.body.classList.add('obs-mode');
+      }
+    }
+
+    function enterViewer(selectedRoom) {
+      room = selectedRoom.toUpperCase();
+      entryScreen.style.display = 'none';
+      viewerScreen.style.display = 'flex';
+      roomLabel.textContent = room;
+      metaRoom.textContent = room;
+
+      const obsUrl = `${window.location.origin}/viewer.html?room=${room}&obs=true`;
+      obsUrlBox.textContent = obsUrl;
+
+      applyObsMode();
+      connectToRoom();
+    }
+
+    connectBtn.addEventListener('click', () => {
+      const value = roomInput.value.trim();
+      if (!value) {
+        roomInput.focus();
+        return;
+      }
+      window.location.href = `viewer.html?room=${encodeURIComponent(value.toUpperCase())}`;
+    });
+
+    roomInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') connectBtn.click();
+    });
+
+    fullscreenBtn.addEventListener('click', () => {
+      if (!document.fullscreenElement) {
+        viewerStage.requestFullscreen?.() || viewerStage.webkitRequestFullscreen?.();
+      } else {
+        document.exitFullscreen?.() || document.webkitExitFullscreen?.();
+      }
+    });
+
+    copyUrlBtn.addEventListener('click', async () => {
+      const url = `${window.location.origin}/viewer.html?room=${room}`;
+      try {
+        await navigator.clipboard.writeText(url);
+        copyUrlBtn.textContent = 'Copied!';
+        setTimeout(() => (copyUrlBtn.textContent = 'Copy Viewer URL'), 1500);
+      } catch {
+        window.prompt('Copy this viewer URL:', url);
+      }
+    });
+
+    obsModeBtn.addEventListener('click', () => {
+      window.open(`${window.location.origin}/viewer.html?room=${room}&obs=true`, '_blank');
+    });
+
+    copyObsUrlBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(obsUrlBox.textContent);
+        copyObsUrlBtn.textContent = 'Copied!';
+        setTimeout(() => (copyObsUrlBtn.textContent = 'Copy OBS URL'), 1500);
+      } catch {
+        window.prompt('Copy this OBS URL:', obsUrlBox.textContent);
+      }
+    });
+
+    function updateVideoMeta() {
+      if (remoteVideo.videoWidth && remoteVideo.videoHeight) {
+        metaResolution.textContent = `${remoteVideo.videoWidth} × ${remoteVideo.videoHeight}`;
+      }
+    }
+
+    remoteVideo.addEventListener('loadedmetadata', updateVideoMeta);
+    remoteVideo.addEventListener('resize', updateVideoMeta);
+
+    function startStatsPolling() {
+      stopStatsPolling();
+      statsTimer = setInterval(async () => {
+        if (!peerConnection) return;
+        try {
+          const stats = await peerConnection.getStats();
+          stats.forEach((report) => {
+            if (report.type === 'inbound-rtp' && report.kind === 'video') {
+              if (typeof report.framesPerSecond === 'number') {
+                metaFps.textContent = `${Math.round(report.framesPerSecond)} FPS`;
+              }
             }
-        });
+          });
+          metaIce.textContent = peerConnection.iceConnectionState;
+        } catch (err) {
+          // getStats can fail transiently during renegotiation; ignore.
+        }
+      }, 1500);
+    }
 
-    </script>
+    function stopStatsPolling() {
+      if (statsTimer) {
+        clearInterval(statsTimer);
+        statsTimer = null;
+      }
+      metaFps.textContent = '—';
+      metaIce.textContent = '—';
+    }
+
+    function createPeerConnection() {
+      const pc = new RTCPeerConnection({ iceServers: [] });
+
+      pc.ontrack = (event) => {
+        if (event.streams && event.streams[0]) {
+          remoteVideo.srcObject = event.streams[0];
+          showVideo();
+          setStatus('connected', 'Connected');
+          clearError();
+          startStatsPolling();
+        }
+      };
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          socket.emit('ice-candidate', event.candidate);
+        }
+      };
+
+      pc.onconnectionstatechange = () => {
+        console.log('[viewer] connectionState:', pc.connectionState);
+        switch (pc.connectionState) {
+          case 'connecting':
+            setStatus('connecting', 'Connecting...');
+            break;
+          case 'connected':
+            setStatus('connected', 'Connected');
+            break;
+          case 'disconnected':
+            setStatus('disconnected', 'Phone disconnected');
+            hideVideo('The phone camera has disconnected.');
+            stopStatsPolling();
+            break;
+          case 'failed':
+            setStatus('error', 'Connection failed');
+            showError('The peer connection failed. This can happen when the phone and PC are on different networks. See the networking notes below.');
+            hideVideo('Connection failed.');
+            stopStatsPolling();
+            break;
+          case 'closed':
+            stopStatsPolling();
+            break;
+        }
+      };
+
+      return pc;
+    }
+
+    function connectToRoom() {
+      hideVideo(`Waiting for a phone camera to join room <strong>${room}</strong>.`);
+
+      socket = io({ reconnection: true, reconnectionAttempts: Infinity, reconnectionDelay: 1000 });
+
+      socket.on('connect', () => {
+        socket.emit('join', { room, role: 'viewer' });
+      });
+
+      socket.on('connect_error', () => {
+        setStatus('error', 'Could not reach the signaling server');
+        showError('Unable to connect to the server. Check your connection and try again.');
+      });
+
+      socket.on('join-error', ({ message }) => {
+        setStatus('error', 'Session error');
+        showError(message);
+      });
+
+      socket.on('camera-status', ({ present }) => {
+        if (!present) {
+          setStatus('waiting', 'Waiting for phone');
+          hideVideo(`Waiting for a phone camera to join room <strong>${room}</strong>.`);
+        }
+      });
+
+      socket.on('offer', async (offer) => {
+        clearError();
+        if (peerConnection) {
+          peerConnection.close();
+        }
+        peerConnection = createPeerConnection();
+
+        try {
+          await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+          const answer = await peerConnection.createAnswer();
+          await peerConnection.setLocalDescription(answer);
+          socket.emit('answer', answer);
+        } catch (err) {
+          console.error('[viewer] Failed to process offer:', err);
+          setStatus('error', 'Connection error');
+          showError('Something went wrong setting up the connection. Try refreshing the page.');
+        }
+      });
+
+      socket.on('ice-candidate', async (candidate) => {
+        if (peerConnection) {
+          try {
+            await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+          } catch (err) {
+            console.error('[viewer] Failed to add ICE candidate:', err);
+          }
+        }
+      });
+
+      socket.on('camera-stopped', () => {
+        setStatus('disconnected', 'Phone stopped sharing');
+        hideVideo('The phone stopped sharing its camera.');
+        stopStatsPolling();
+        if (peerConnection) {
+          peerConnection.close();
+          peerConnection = null;
+        }
+      });
+
+      socket.on('disconnect', () => {
+        setStatus('reconnecting', 'Connection lost — attempting to reconnect...');
+        stopStatsPolling();
+      });
+
+      socket.io.on('reconnect', () => {
+        setStatus('waiting', 'Reconnected — waiting for phone...');
+      });
+    }
+
+    if (!window.RTCPeerConnection) {
+      showError('This browser does not support WebRTC, so it cannot view the camera stream.');
+    }
+
+    if (room) {
+      enterViewer(room);
+    } else {
+      roomInput.focus();
+    }
+  </script>
 </body>
-
 </html>

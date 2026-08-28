@@ -1,16 +1,18 @@
 {
-  "name": "-phebcam",
+  "name": "phebcam",
   "version": "1.0.0",
-  "description": "",
+  "description": "A small WebRTC webcam streaming experiment using Socket.IO for signaling.",
   "main": "index.js",
   "scripts": {
-    "start": "nodemon index.js"
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "test": "node tests/test-static-structure.js && node tests/test-signaling.js && node tests/test-edge-cases.js"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/PiyushSakhuja/-phebcam.git"
   },
-  "keywords": [],
+  "keywords": ["webrtc", "socket.io", "webcam", "streaming"],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
@@ -19,10 +21,11 @@
   },
   "homepage": "https://github.com/PiyushSakhuja/-phebcam#readme",
   "dependencies": {
-    "express": "^5.2.1",
+    "express": "^4.21.1",
     "socket.io": "^4.8.3"
   },
   "devDependencies": {
-    "nodemon": "^3.1.14"
+    "nodemon": "^3.1.14",
+    "socket.io-client": "^4.8.3"
   }
 }

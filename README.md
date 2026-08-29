@@ -1,616 +1,317 @@
-# Phebcam
+<p align="center">
+  <img src="public/assets/logo.png" alt="Phebcam" width="500">
+</p>
 
-### Turn your phone into a wireless webcam.
+<h1 align="center">Phebcam</h1>
 
-Phebcam is a WebRTC-based application that lets you use your **phone camera as a webcam for your PC or laptop**.
+<p align="center">
+  Turn your phone into a wireless webcam.
+</p>
 
-The phone streams its camera directly to a PC browser using WebRTC. The PC can then capture the Phebcam viewer through **OBS Browser Source** and expose it to other applications using **OBS Virtual Camera**.
+Phebcam is a WebRTC-based wireless webcam project that lets a phone
+camera be streamed to a PC and exposed to desktop applications through
+**OBS Virtual Camera**.
 
-```text
-📱 PHONE
-   │
-   │ WebRTC
-   ▼
-Phebcam
-   │
-   ▼
-💻 PC / LAPTOP
-   │
-   │ OBS Browser Source
-   ▼
-OBS
-   │
-   │ Virtual Camera
-   ▼
-🎥 Zoom / Discord / Google Meet / Teams / etc.
+Stream your phone camera to your PC over WebRTC, then use OBS Virtual
+Camera to make it available to Zoom, Discord, Google Meet, Teams, and
+other applications.
+
+This is a small personal/portfolio project. It does not claim zero
+latency, guaranteed connectivity across arbitrary networks, or
+production-grade reliability. See [Limitations](#limitations).
+
+---
+
+## Architecture
+
 ```
-
-## 🚀 Live Demo
-
-**[Open Phebcam](https://phebcamm.onrender.com/)**
-
-The hosted version is provided primarily as a **demo**.
-
-It runs on Render's free web-service tier, which can spin down after 15 minutes without incoming traffic. When that happens, the next request has to wake the service, which can take around a minute.
-
-For actually using Phebcam for an extended session, **run it locally on your PC** using the instructions below.
-
----
-
-# ✨ Features
-
-* 📱 Use a phone camera as a wireless webcam
-* ⚡ WebRTC peer-to-peer video streaming
-* 🔗 Room-based camera/viewer sessions
-* 🔒 Session isolation
-* 🎥 OBS Browser Source integration
-* 📹 OBS Virtual Camera support
-* 🔄 Front/back camera switching
-* 🪞 Camera mirror toggle
-* 🖥️ Desktop-optimized viewer
-* 📱 Mobile-first camera interface
-* 📐 Live video resolution information
-* 🎞️ Real FPS information from WebRTC statistics
-* 🔌 Connection and ICE status
-* ⛔ Explicit camera start/stop controls
-* 🔄 Socket reconnection handling
-* 🛡️ No video recording or server-side video storage
-
----
-
-# 🧠 How It Works
-
-Phebcam uses **WebRTC** for the actual video connection and **Socket.IO** only for signaling.
-
-### Signaling
-
-```text
 Phone
-  │
-  │ offer
-  ▼
-Socket.IO Server
-  │
-  │ offer
-  ▼
-PC Viewer
-
-PC
-  │
-  │ answer
-  ▼
-Socket.IO Server
-  │
-  │ answer
-  ▼
-Phone
+  |   getUserMedia() -> camera track
+  v
+WebRTC PeerConnection
+  |   direct peer-to-peer media (audio disabled, video only)
+  v
+Phebcam Viewer (PC browser)
+  |   rendered in an OBS Browser Source
+  v
+OBS Browser Source
+  |
+  v
+OBS Scene -> OBS Virtual Camera
+  |
+  v
+Zoom / Discord / Google Meet / Teams / any app that can pick a camera
 ```
 
-ICE candidates are also exchanged through the signaling server.
+Signaling (offer/answer/ICE candidate exchange) travels through a small
+Node.js/Express/Socket.IO server, scoped by a **room code** so multiple
+phone↔PC pairs can use the same server without crosstalk. Once the WebRTC
+connection is established, video flows **directly** between the phone and
+the PC — the server never sees or stores the video itself.
 
-Once the WebRTC connection is established, the video is sent through the peer connection rather than being streamed through the Node.js server.
+**Important:** Phebcam's responsibility ends at delivering the video
+stream to the PC browser. It does not implement a fake/virtual camera
+driver and does not attempt to make the browser appear as a native
+Windows/macOS/Linux camera device — that would require OS-specific driver
+code and break the project's simplicity. **OBS** (specifically its Browser
+Source + built-in Virtual Camera feature) handles turning a browser tab
+into something other apps can select as a camera. This is intentional: it
+keeps Phebcam simple and cross-platform.
 
-### Actual architecture
+## How to use
 
-```text
-                 ┌─────────────────┐
-                 │  Node.js Server │
-                 │    Express      │
-                 │    Socket.IO    │
-                 └────────┬────────┘
-                          │
-                     Signaling
-                          │
-              ┌───────────┴───────────┐
-              │                       │
-              ▼                       ▼
-        📱 Phone                  💻 PC
-        Camera                   Viewer
-              │                       │
-              └────── WebRTC ─────────┘
-                       Video
+1. **On your phone:** open Phebcam, tap **Use Phone as Webcam**. A room
+   code is generated (e.g. `ABC123`) and you land on the camera page.
+2. Tap **Start Camera**. Your browser will prompt for camera permission.
+   Once granted, you'll see your own preview and a status of "Waiting for
+   PC...".
+3. **On your PC:** open Phebcam, click **I'm on the PC**, and enter the
+   room code from your phone (or open
+   `http://<server>/viewer.html?room=ABC123` directly).
+4. The phone and PC exchange a WebRTC offer/answer and ICE candidates via
+   the signaling server. Once connected, the phone's camera video appears
+   full-frame in the PC viewer, with its actual resolution and (when
+   available) frame rate shown below the video.
+5. **In OBS:**
+   - Add a **Browser Source** to a scene.
+   - Use the **OBS Mode** button on the viewer page (or the "Copy OBS
+     URL" button under "Use Phebcam in OBS") to get a chrome-free URL
+     like `viewer.html?room=ABC123&obs=true`, and paste that into the
+     Browser Source.
+   - Set the Browser Source's width/height to roughly match the phone's
+     video resolution shown in the viewer.
+   - Select that source in your scene, then click **Start Virtual
+     Camera** in OBS.
+   - In Zoom/Discord/Meet/Teams/etc., select **OBS Virtual Camera** as
+     the camera device.
+6. Tap **Stop Camera** on the phone at any time to stop sharing. This
+   fully releases the camera hardware and notifies the PC viewer
+   immediately.
+
+## OBS setup (detailed)
+
 ```
-
-The server handles signaling.
-
-The server does **not** receive or store the camera video as part of the current architecture.
-
----
-
-# 🎯 How To Use Phebcam
-
-## Option 1 — Live Demo
-
-Open:
-
-**https://phebcamm.onrender.com/**
-
-### On your phone
-
-1. Open Phebcam.
-2. Select **Use Phone as Webcam**.
-3. Tap **Start Camera**.
-4. Allow camera permission.
-5. Note the generated room/session code.
-
-### On your PC
-
-1. Open Phebcam.
-2. Select **I'm on the PC**.
-3. Enter the phone's room code.
-4. Connect.
-5. Your phone camera should appear in the viewer.
-
-### Then use OBS
+Phebcam Viewer  →  OBS Browser Source  →  OBS Scene  →  Start Virtual Camera  →  Zoom / Discord / Meet / Teams
+```
 
 1. Open OBS.
-2. Add a **Browser Source**.
-3. Use the Phebcam viewer URL.
-4. Enter the same room/session code.
-5. Confirm that the phone video appears in OBS.
-6. Click **Start Virtual Camera** in OBS.
-7. Open your video application.
-8. Select **OBS Virtual Camera** as the camera.
+2. In your scene, click **+** under Sources, choose **Browser**.
+3. Paste the OBS-mode viewer URL (see step 5 above). This URL hides all
+   Phebcam navigation/status chrome and shows only the video, so the
+   Browser Source captures a clean feed.
+4. Set the Browser Source's width and height. Match your phone's actual
+   video resolution (shown in the PC viewer's info bar) for the sharpest
+   result — mismatched dimensions will letterbox or crop.
+5. Arrange/select the Phebcam source in your scene as needed.
+6. Click **Start Virtual Camera** in OBS's Controls panel.
+7. In any app that lets you choose a camera, select **OBS Virtual
+   Camera**.
 
-The final pipeline is:
+Applications never talk to Phebcam directly — they only ever see "OBS
+Virtual Camera" as a normal system camera device, because OBS is what
+exposes that device, not Phebcam.
 
-```text
-Phone Camera
-     ↓
-Phebcam
-     ↓
-PC Viewer
-     ↓
-OBS Browser Source
-     ↓
-OBS Virtual Camera
-     ↓
-Zoom / Discord / Meet / Teams
-```
+## Room codes
 
----
+- The phone creates a session and receives a short random room code.
+- The PC viewer joins that same room by entering the code.
+- Signaling messages are relayed only within a room, so one phone/PC pair
+  never receives another pair's signaling data.
+- Rooms are in-memory on the server and require no account or login.
 
-# 💻 Recommended: Run Phebcam Locally
+## Video info shown in the viewer
 
-For longer sessions, local hosting is recommended.
+- **Resolution** — read directly from the video element's
+  `videoWidth`/`videoHeight` once the phone's stream is playing. Updates
+  automatically if the phone rotates or otherwise changes its video
+  dimensions.
+- **Frame rate** — read from WebRTC's `getStats()` inbound-rtp report
+  (`framesPerSecond`) when the browser reports it. If it isn't available,
+  the viewer does not display a fabricated number.
+- **Connection / ICE state** — reflects the real
+  `RTCPeerConnection.connectionState` / `iceConnectionState` values. No
+  latency figure is shown because it isn't measured; Phebcam does not
+  claim "0 ms latency" or any other unmeasured number.
 
-The Render free service can sleep after 15 minutes of inactivity, so the hosted version is best treated as a demonstration rather than a continuously available service.
+## Networking: STUN, TURN, and why streaming might fail
 
-Running locally also gives you a much simpler development/testing environment.
+- **STUN** helps a peer discover its own publicly reachable network
+  address so the other side can potentially connect directly.
+- **TURN** relays media when a direct peer-to-peer connection isn't
+  possible at all (common across different networks/strict NATs).
 
----
+**Phebcam currently ships with `iceServers: []`** — no STUN or TURN
+configured.
 
-# 🛠️ Local Setup
+- **Same network / local testing**: supported, where the browser's
+  security requirements are met (see the note on HTTPS/localhost below).
+- **Different networks**: may fail without a TURN relay. In that case the
+  viewer/phone connection state will show "Connecting..." and eventually
+  "failed" — this is expected given the current configuration, not a
+  signaling bug.
 
-## Requirements
+If you add TURN later, pass credentials via environment variables into
+the server and have the server hand the client a short-lived
+configuration — never hardcode TURN credentials in the client-side code.
 
-Install:
+> Most browsers only allow camera access on `https://` or on `localhost`.
+> Opening the phone camera page over plain `http://<lan-ip>` will likely
+> be blocked. Serve over HTTPS (e.g. via a reverse proxy or a tool like
+> `ngrok`) if you need real phone-to-PC testing across devices on your
+> LAN.
 
-* Node.js
-* npm
-* Git
+## Privacy
 
-Check your installation:
+- Camera access on the phone requires explicit browser permission —
+  nothing starts automatically on page load.
+- Video is transmitted using WebRTC, directly between the phone and the
+  PC browser.
+- The signaling server handles only signaling messages (SDP
+  offer/answer, ICE candidates) required to establish the connection.
+- The server does not store camera recordings, and does not receive the
+  video stream itself.
+- No recording occurs unless you explicitly record through another
+  application, such as OBS.
+- Tapping "Stop Camera" immediately stops all local media tracks and
+  closes the peer connection; the camera hardware is released.
+
+## Setup
+
+Requires Node.js 18+.
 
 ```bash
-node --version
-npm --version
-```
-
----
-
-## 1. Clone the repository
-
-```bash
-git clone https://github.com/PiyushSakhuja/phebcam.git
-```
-
-Enter the project:
-
-```bash
+git clone <this-repo-url>
 cd phebcam
-```
-
----
-
-## 2. Install dependencies
-
-```bash
 npm install
-```
-
----
-
-## 3. Start the server
-
-```bash
 npm start
 ```
 
-The server runs on:
+Then open `http://localhost:3000` on the machine that will act as your
+PC/viewer, and open the same address from your phone's browser (on the
+same network, or via a tunneling tool for HTTPS — see Networking above).
 
-```text
-http://localhost:3000
+```bash
+npm run dev     # auto-restart on file changes
+PORT=8080 npm start   # override the default port (3000)
 ```
 
-Open that address on your PC.
-
----
-
-# 📱 Using Your Phone With A Local Server
-
-If the phone and PC are connected to the **same Wi-Fi network**, you can access the local server from the phone using your PC's local IP address.
-
-### Find your PC's IP address
-
-On Windows PowerShell:
-
-```powershell
-ipconfig
-```
-
-Look for:
-
-```text
-IPv4 Address
-```
-
-For example:
-
-```text
-192.168.1.105
-```
-
-Your phone can then open:
-
-```text
-http://192.168.1.105:3000
-```
-
-instead of:
-
-```text
-http://localhost:3000
-```
-
-### Important
-
-`localhost` on your phone means **the phone itself**, not your PC.
-
-So:
-
-```text
-❌ http://localhost:3000
-```
-
-on the phone is usually wrong.
-
-Use:
-
-```text
-✅ http://YOUR_PC_IP:3000
-```
-
-when testing across your local network.
-
----
-
-# 🔐 Camera Permissions
-
-The browser must explicitly grant camera access.
-
-Phebcam does **not** automatically start the camera when the page loads.
-
-The user must press:
-
-```text
-Start Camera
-```
-
-and grant permission.
-
-The camera can be stopped using:
-
-```text
-Stop Camera
-```
-
-which releases the active media tracks.
-
----
-
-# 🎥 OBS Setup
-
-Phebcam does not create a native operating-system webcam device itself.
-
-Instead:
-
-```text
-Phebcam Viewer
-       ↓
-OBS Browser Source
-       ↓
-OBS Scene
-       ↓
-OBS Virtual Camera
-       ↓
-Desktop Applications
-```
-
-### Step 1 — Open OBS
-
-Install and open OBS Studio.
-
-### Step 2 — Add Browser Source
-
-In OBS:
-
-```text
-Sources
-  ↓
-+
-  ↓
-Browser
-```
-
-### Step 3 — Enter the viewer URL
-
-Use the Phebcam viewer URL with your room code.
-
-Example:
-
-```text
-https://phebcamm.onrender.com/viewer.html?room=ABC123&obs=true
-```
-
-For local use:
-
-```text
-http://localhost:3000/viewer.html?room=ABC123&obs=true
-```
-
-or, when accessing from another device:
-
-```text
-http://YOUR_PC_IP:3000/viewer.html?room=ABC123&obs=true
-```
-
-### Step 4 — Start Virtual Camera
-
-Once the phone video appears in OBS:
-
-```text
-Start Virtual Camera
-```
-
-### Step 5 — Select the camera
-
-In applications such as Zoom, Discord, Google Meet, or Teams, select:
-
-```text
-OBS Virtual Camera
-```
-
----
-
-# 🌐 Networking
-
-Phebcam currently uses WebRTC with no TURN server configured by default.
-
-This means connectivity can depend on the network environment.
-
-### Same network
-
-The application is designed to work well for local/LAN experimentation when browser security requirements are satisfied.
-
-```text
-Phone ─── Wi-Fi ─── PC
-```
-
-### Different networks
-
-For example:
-
-```text
-Phone ─── Mobile Network
-
-             Internet
-
-PC ─────── Home Wi-Fi
-```
-
-This may fail with the current configuration.
-
-A production-oriented version would typically add appropriate **STUN/TURN infrastructure** to improve connectivity across restrictive NATs and different networks.
-
-Phebcam intentionally does not claim universal cross-network connectivity.
-
----
-
-# 🔒 Privacy
-
-Phebcam is designed around explicit camera access.
-
-* Camera permission is requested by the browser.
-* Camera capture starts only after user interaction.
-* Video is transmitted using WebRTC.
-* Socket.IO is used for signaling.
-* The current server does not record camera video.
-* No camera recordings are stored by Phebcam.
-* Stopping the camera stops the active media tracks.
-
-Phebcam does not secretly capture or record camera footage.
-
----
-
-# 🧪 Testing
-
-The project includes automated tests for the server and static application structure.
-
-Run:
+## Automated tests
 
 ```bash
 npm test
 ```
 
-Current test coverage includes:
+Runs (with the server already running separately, or standalone for the
+signaling/edge-case suites which start their own client connections):
 
-* signaling relay
-* room isolation
-* input validation
-* static HTML structure
-* camera start behavior
-* camera stop behavior
-* WebRTC wiring
-* no hardcoded TURN credentials
+- `tests/test-static-structure.js` — verifies every DOM id referenced in
+  each page's inline script actually exists in that page's HTML, that no
+  duplicate ids exist, that the camera never auto-starts, and that no
+  TURN credentials are hardcoded server-side.
+- `tests/test-signaling.js` — join flow, offer/answer/ICE relay within a
+  room, camera-stopped notification, cross-room isolation.
+- `tests/test-edge-cases.js` — rejection of invalid/missing room codes
+  and invalid roles.
 
-Current automated test result:
+All three suites currently pass (24/24 checks). See
+[`TESTING.md`](./TESTING.md) for the full manual checklist covering the
+real phone → OBS → virtual camera workflow, and which parts of that
+workflow have and haven't actually been verified end-to-end.
 
-```text
-24 / 24 passing
+## Limitations
+
+- **One phone camera per room** is the intended/tested case. The
+  signaling layer can hand multiple viewers their own offer/answer
+  exchange with the camera, but this hasn't been load-tested with many
+  simultaneous viewers.
+- **Rooms are in-memory only** — restarting the server clears all active
+  room state.
+- **No authentication** — anyone with a room code can join it. Room codes
+  are short random strings, not access-controlled; treat this as a
+  casual/local tool, not something for sensitive use.
+- **No TURN server configured by default**, so connections across
+  restrictive or mismatched networks may fail.
+- **Reconnection is automatic at the socket level** (Socket.IO retries
+  the signaling connection), but a dropped WebRTC peer connection itself
+  is not automatically re-established — the UI clearly reflects a
+  disconnected/reconnecting state, and rejoining the room (e.g. via
+  refresh) re-triggers the offer/answer flow.
+- **Frame rate display** depends on the browser actually reporting
+  `framesPerSecond` via `getStats()` — not all browsers/versions do, in
+  which case the FPS field is simply left blank rather than guessed.
+- This is a portfolio/learning project, not a hardened, production video
+  platform.
+
+## Project structure
+
 ```
-
-### Manual testing
-
-The following should also be tested with real devices:
-
-```text
-✓ Phone camera starts
-✓ PC viewer connects
-✓ Video appears
-✓ Camera can be stopped
-✓ Front/back camera switching
-✓ Mirror toggle
-✓ Phone rotation
-✓ Viewer disconnect
-✓ Camera disconnect
-✓ OBS Browser Source
-✓ OBS Virtual Camera
-✓ Desktop application receives video
-```
-
-Hardware-dependent WebRTC/OBS behavior cannot be completely verified through automated server tests.
-
----
-
-# 📂 Project Structure
-
-```text
 phebcam/
-│
-├── public/
-│   ├── index.html
-│   ├── phone.html
-│   ├── viewer.html
-│   └── style.css
-│
-├── tests/
-│   ├── ...
-│
-├── index.js
+├── index.js                 Signaling server (Express + Socket.IO, room-based relay)
 ├── package.json
-├── README.md
-└── TESTING.md
+├── public/
+│   ├── index.html             Landing page (phone-as-webcam positioning)
+│   ├── phone.html              Mobile-optimized camera page
+│   ├── viewer.html             Desktop-optimized PC viewer + OBS instructions + OBS mode
+│   ├── style.css                Shared styling (distinct phone/viewer layouts)
+│   ├── manifest.json             Web app manifest (name, icon, theme color)
+│   └── assets/                   Brand assets — see below
+│       ├── logo.png                Full wordmark (dark background)
+│       ├── logo-icon.png           Square icon (navbar, favicon source, apple-touch-icon, manifest)
+│       ├── favicon.png             Browser tab icon
+│       └── og-image.png            Social/link-preview image
+├── tests/
+│   ├── test-static-structure.js  DOM/id/wiring/branding sanity checks
+│   ├── test-signaling.js          Signaling relay + room isolation tests
+│   └── test-edge-cases.js         Invalid room/role handling tests
+├── TESTING.md                  Manual test checklist and current results
+└── assets/                     Screenshots / demo media (see below)
 ```
 
----
-
-# 🧩 Technology Stack
-
-### Frontend
-
-* HTML
-* CSS
-* JavaScript
-* MediaDevices API
-* WebRTC APIs
-
-### Backend
-
-* Node.js
-* Express
-* Socket.IO
-
-### Integration
-
-* OBS Studio
-* OBS Browser Source
-* OBS Virtual Camera
-
-No frontend framework is required.
-
----
-
-# ⚠️ Current Limitations
-
-Phebcam is a personal/educational project and is not intended to be a production video-conferencing service.
-
-Current limitations:
-
-* No TURN server by default
-* Cross-network WebRTC connectivity may fail
-* Room state is stored in memory
-* No user authentication
-* No persistent sessions
-* No automatic WebRTC peer reconnection after every failure
-* Render free deployment can sleep when idle
-* The hosted demo may take time to wake after inactivity
-* OBS is required to expose the stream as a system virtual camera
-* Camera quality depends on the phone, browser, network, and WebRTC connection
-
-For long-running use, run Phebcam locally or use an always-on server configuration.
-
----
-
-# 🚀 Future Improvements
-
-Potential future work:
-
-* STUN/TURN configuration
-* More reliable cross-network connectivity
-* Automatic WebRTC reconnection
-* Persistent room/session management
-* Better connection diagnostics
-* Bitrate/resolution controls
-* Audio streaming
-* Camera quality presets
-* Native desktop companion
-* Native virtual-camera integration without requiring OBS
-
----
-
-
-# 📌 Project Goal
-
-The goal of Phebcam is to explore how a browser-based camera stream can be transported in real time using WebRTC and then integrated into the desktop webcam ecosystem through OBS.
-
-The project combines:
-
-```text
-Browser Camera APIs
-        +
-WebRTC
-        +
-Real-time Signaling
-        +
-Socket.IO
-        +
-OBS Integration
+```
+assets/
+├── screenshots/
+│   ├── home.png
+│   ├── phone.png
+│   ├── viewer.png
+│   └── obs-setup.png
+└── videos/
+    └── demo.gif
 ```
 
-into a practical wireless webcam workflow.
+## Branding
 
----
+The Phebcam logo appears:
 
-# License
+- As a compact icon (`assets/logo-icon.png`) in the navbar/header of the
+  phone page and the PC viewer's topbar, linking back to the home page.
+- As the full wordmark (`assets/logo.png`) in the hero section of the
+  landing page and the viewer's room-entry screen.
+- As the browser favicon (`assets/favicon.png`) and Apple touch icon
+  (`assets/logo-icon.png`) on every page.
+- In social/link previews via Open Graph and Twitter Card metadata
+  (`assets/og-image.png`), set on the landing page.
+- In this README, above the title.
 
-MIT License.
+OBS mode (`?obs=true`) intentionally hides all navigation and branding —
+only the video is shown, since that's what an OBS Browser Source
+captures.
 
-Built for learning, experimentation, and personal use.
+All logo assets are used as provided (resized/cropped only where needed
+for favicon/social-image dimensions) — none of the artwork itself was
+redrawn or recreated with CSS.
 
----
+### GitHub repository branding (manual step required)
 
-<p align="center">
-  <strong>Phebcam</strong><br>
-  Turn your phone into a wireless webcam.
-</p>
+HTML/CSS cannot control how a repository looks on GitHub itself. To
+finish branding the repo, you'll need to manually, from the repo's
+**Settings** page:
+
+- Upload `public/assets/og-image.png` (or `logo.png`) as the repository's
+  **social preview image** (Settings → General → Social preview).
+
+Everything else (favicon, navbar, README, mobile icon) is already wired
+up in code and needs no further manual steps.
+
+## License
+
+ISC

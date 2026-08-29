@@ -3,7 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Phebcam — Viewer</title>
+  <title>Phebcam — Webcam Viewer</title>
+  <link rel="icon" type="image/png" href="/assets/favicon.png">
+  <link rel="apple-touch-icon" href="/assets/logo-icon.png">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#0b0d12">
   <link rel="stylesheet" href="style.css">
   <script src="/socket.io/socket.io.js"></script>
 </head>
@@ -12,7 +16,9 @@
   <!-- ============ Room entry (shown when no ?room= is present) ============ -->
   <div class="page" id="entryScreen">
     <header class="top">
-      <h1>Phebcam</h1>
+      <div class="hero-logo">
+        <img src="assets/logo.png" alt="Phebcam">
+      </div>
       <p class="tagline">I'm on the PC</p>
       <p class="subtext">Enter the room code shown on your phone to connect.</p>
     </header>
@@ -45,7 +51,9 @@
   <div class="viewer-page" id="viewerScreen" style="display:none;">
     <div class="viewer-topbar" id="viewerTopbar">
       <div class="brand">
-        Phebcam
+        <a href="index.html" aria-label="Phebcam home" style="display:inline-flex; align-items:center;">
+          <img src="assets/logo-icon.png" alt="Phebcam" class="brand-logo-icon">
+        </a>
         <span class="status-row">
           <span class="status-dot waiting" id="statusDot"></span>
           <span id="statusText">Waiting for phone</span>
@@ -202,6 +210,7 @@
     function applyObsMode() {
       if (obsMode) {
         document.body.classList.add('obs-mode');
+        document.title = 'Phebcam — OBS Viewer';
       }
     }
 

@@ -3,15 +3,22 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>Phebcam — Your phone camera</title>
+  <title>Phebcam — Phone Camera</title>
+  <link rel="icon" type="image/png" href="/assets/favicon.png">
+  <link rel="apple-touch-icon" href="/assets/logo-icon.png">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#0b0d12">
   <link rel="stylesheet" href="style.css">
   <script src="/socket.io/socket.io.js"></script>
 </head>
 <body class="phone-view">
   <div class="phone-page">
     <div class="phone-header">
-      <h1>Phebcam</h1>
-      <p class="sub">Your phone camera</p>
+      <a href="index.html" class="brand-link" aria-label="Phebcam home">
+        <img src="assets/logo-icon.png" alt="Phebcam" class="brand-logo-icon">
+        <span class="brand-name">Phebcam</span>
+      </a>
+      <p class="sub">Camera</p>
     </div>
 
     <div id="liveBadge" class="live-badge" style="display:none;">
